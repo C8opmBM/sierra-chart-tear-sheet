@@ -2253,6 +2253,7 @@ def render_report(
     monthly_summary: dict[str, Any] | None = None,
     sc_statistics: dict[str, Any] | None = None,
     mc_starting_balance: float | None = None,
+    risk_capital: float | None = None,
 ) -> None:
     """Render the tear sheet HTML to *output_path*."""
     env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=False)
@@ -2267,7 +2268,7 @@ def render_report(
     # gross execution P&L.
     pnls = [t.get("net_pnl", 0.0) for t in trades]
     starting_bal = _monte_carlo_starting_balance(equity_curve, mc_starting_balance)
-    monte_carlo = run_monte_carlo(pnls, starting_bal) if len(pnls) >= 5 else {}
+    monte_carlo = run_monte_carlo(pnls, starting_bal, risk_capital=risk_capital) if len(pnls) >= 5 else {}
     mc_chart = _monte_carlo_chart(monte_carlo)
 
     has_r_multiples = any(t.get("r_multiple") is not None for t in trades)

@@ -11,6 +11,7 @@ def run_monte_carlo(
     n_sims: int = 1000,
     ruin_threshold: float = 0.25,
     seed: int = 42,
+    risk_capital: float | None = None,
 ) -> dict[str, Any]:
     """Bootstrap-resample trade P&Ls to generate an equity-curve distribution.
 
@@ -23,33 +24,60 @@ def run_monte_carlo(
         pays commissions on every fill regardless of which historical trades
         get resampled.
     starting_balance:
-        Equity at the start of the period.
+        Equity at the start of the period. Drives ``percentile_curves`` and
+        ``actual_curve`` (the dollar-denominated balance curves) — always,
+        regardless of *risk_capital*.
     n_sims:
         Number of bootstrap simulations.
     ruin_threshold:
         Max drawdown fraction that defines "ruin" (default 0.25 = 25 %).
     seed:
         Random seed for reproducibility.
+    risk_capital:
+        Optional. When set, drawdown percentages (``median_max_dd_pct``,
+        ``p95_max_dd_pct``, and the ``ruin_probability`` check) are computed
+        as *dollar drawdown from peak* ÷ *risk_capital*, instead of ÷ the
+        running peak balance itself. This matters whenever
+        *starting_balance* is a nominal/inflated figure that doesn't
+        represent capital actually at risk — e.g. a prop-firm evaluation or
+        funded account where the displayed balance (say $50,000) is mostly a
+        trailing-drawdown buffer, and the amount you can actually lose
+        before failing is much smaller (say $2,000). Computing drawdown % as
+        a fraction of $50,000 would understate real risk by ~25x in that
+        case. Passing ``risk_capital=2000`` there makes the percentages
+        reflect the true at-risk amount, while ``starting_balance`` continues
+        to drive the dollar-denominated curves unchanged. When *not* set,
+        behavior is unchanged from before this parameter existed (drawdown %
+        is computed against the running peak balance).
 
     Returns
     -------
     dict with keys:
         ``percentile_curves`` – {"p5","p25","p50","p75","p95"} → list of
-        balance values at each trade step (length n + 1).
+        balance values at each trade step (length n + 1). Always
+        dollar-denominated from *starting_balance*, independent of
+        *risk_capital*.
         ``actual_curve`` – actual historical equity indexed by trade number.
-        ``stats`` – summary statistics dict.
+        Same dollar-denomination note as above.
+        ``stats`` – summary statistics dict. Drawdown-percentage fields
+        reflect *risk_capital* when provided (see above); ``stats``
+        additionally carries ``risk_capital`` (``None`` when not provided)
+        so callers/templates can label the percentages correctly.
     """
     if len(pnls) < 5 or starting_balance <= 0:
         return {"percentile_curves": {}, "actual_curve": [], "stats": {}}
 
     n = len(pnls)
 
-    # Actual historical equity curve (trade-indexed)
+    # Actual historical equity curve (trade-indexed) — always dollar-
+    # denominated from starting_balance, regardless of risk_capital.
     actual_curve: list[float] = [starting_balance]
     bal = starting_balance
     for p in pnls:
         bal += p
         actual_curve.append(bal)
+
+    use_risk_capital = risk_capital is not None and risk_capital > 0
 
     try:
         import numpy as np
@@ -59,15 +87,24 @@ def run_monte_carlo(
         idx = rng.integers(0, n, size=(n_sims, n))
         sampled = pnls_arr[idx]
 
-        # Equity matrix: (n_sims, n+1)
+        # Equity matrix: (n_sims, n+1) — dollar-denominated, unaffected by
+        # risk_capital.
         curves = np.empty((n_sims, n + 1), dtype=float)
         curves[:, 0] = starting_balance
         curves[:, 1:] = starting_balance + np.cumsum(sampled, axis=1)
 
-        # Drawdown matrix
+        # Drawdown matrix. Denominator switches to risk_capital when given —
+        # everything else about the curves themselves is untouched.
         running_peak = np.maximum.accumulate(curves, axis=1)
-        safe_peak = np.where(running_peak > 0, running_peak, 1.0)
-        max_dds = ((running_peak - curves) / safe_peak).max(axis=1)
+        if use_risk_capital:
+            denom = float(risk_capital)
+        else:
+            denom = None
+        if denom is not None:
+            max_dds = ((running_peak - curves) / denom).max(axis=1)
+        else:
+            safe_peak = np.where(running_peak > 0, running_peak, 1.0)
+            max_dds = ((running_peak - curves) / safe_peak).max(axis=1)
         final_bals = curves[:, -1]
 
         pct_matrix = np.percentile(curves, [5, 25, 50, 75, 95], axis=0)
@@ -104,7 +141,10 @@ def run_monte_carlo(
                 balance += p
                 if balance > peak:
                     peak = balance
-                dd = (peak - balance) / peak if peak > 0 else 0.0
+                if use_risk_capital:
+                    dd = (peak - balance) / risk_capital
+                else:
+                    dd = (peak - balance) / peak if peak > 0 else 0.0
                 if dd > max_dd:
                     max_dd = dd
                 curve.append(balance)
@@ -133,6 +173,7 @@ def run_monte_carlo(
         "n_sims": n_sims,
         "n_trades": n,
         "starting_balance": round(starting_balance, 2),
+        "risk_capital": round(risk_capital, 2) if use_risk_capital else None,
         "median_final": round(_q(fb_sorted, 0.50), 2),
         "p5_final": round(_q(fb_sorted, 0.05), 2),
         "p95_final": round(_q(fb_sorted, 0.95), 2),

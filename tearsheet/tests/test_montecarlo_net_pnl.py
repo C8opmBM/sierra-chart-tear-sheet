@@ -153,3 +153,54 @@ class TestMonteCarloStartingBalanceNoDoubleCount:
         buggy_final = expected_final + trades[0]["net_pnl"]
         assert result["actual_curve"][-1] != pytest.approx(buggy_final)
 
+
+class TestMonteCarloRiskCapital:
+    """Tests for decoupling drawdown%/ruin from the (possibly inflated)
+    account balance via the risk_capital parameter.
+    """
+
+    def test_dollar_curves_unaffected_by_risk_capital(self):
+        # actual_curve/percentile_curves must be identical with or without
+        # risk_capital — only the %-based drawdown/ruin figures may change.
+        pnls = [50.5, -37.0, 95.5, 20.0, -15.0, 30.0, -60.0, 45.0]
+        without = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=200)
+        withrc = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=200, risk_capital=2000.0)
+
+        assert without["actual_curve"] == withrc["actual_curve"]
+        assert without["percentile_curves"] == withrc["percentile_curves"]
+        assert without["stats"]["starting_balance"] == withrc["stats"]["starting_balance"]
+        assert without["stats"]["median_final"] == withrc["stats"]["median_final"]
+        assert without["stats"]["p5_final"] == withrc["stats"]["p5_final"]
+        assert without["stats"]["p95_final"] == withrc["stats"]["p95_final"]
+
+    def test_drawdown_pct_scales_up_with_smaller_risk_capital(self):
+        # A losing streak that's a tiny % of $50,000 should read as a much
+        # larger % of $2,000 risk capital.
+        pnls = [-40.0, -50.0, -45.0, 60.0, 55.0, -35.0, 50.0, -60.0]
+        big_base = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=500)
+        small_risk_capital = run_monte_carlo(
+            pnls, starting_balance=50000.0, n_sims=500, risk_capital=2000.0
+        )
+        assert small_risk_capital["stats"]["median_max_dd_pct"] > big_base["stats"]["median_max_dd_pct"]
+        assert small_risk_capital["stats"]["ruin_probability"] >= big_base["stats"]["ruin_probability"]
+
+    def test_stats_report_risk_capital_when_set(self):
+        pnls = [10.0, -5.0, 20.0, -8.0, 15.0]
+        result = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=50, risk_capital=2000.0)
+        assert result["stats"]["risk_capital"] == 2000.0
+
+    def test_stats_risk_capital_is_none_when_not_set(self):
+        pnls = [10.0, -5.0, 20.0, -8.0, 15.0]
+        result = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=50)
+        assert result["stats"]["risk_capital"] is None
+
+    def test_zero_or_negative_risk_capital_falls_back_to_peak_based(self):
+        pnls = [10.0, -5.0, 20.0, -8.0, 15.0]
+        baseline = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=50)
+        zero_rc = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=50, risk_capital=0.0)
+        neg_rc = run_monte_carlo(pnls, starting_balance=50000.0, n_sims=50, risk_capital=-100.0)
+        assert zero_rc["stats"]["median_max_dd_pct"] == baseline["stats"]["median_max_dd_pct"]
+        assert neg_rc["stats"]["median_max_dd_pct"] == baseline["stats"]["median_max_dd_pct"]
+        assert zero_rc["stats"]["risk_capital"] is None
+
+

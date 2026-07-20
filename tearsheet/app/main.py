@@ -235,6 +235,7 @@ def run(
     input_path: str | Path,
     output_path: str | Path,
     starting_balance: float | None = None,
+    risk_capital: float | None = None,
 ) -> dict[str, Any]:
     """Execute the full pipeline and write *output_path*.
 
@@ -244,6 +245,17 @@ def run(
         Only used as a fallback (see below). Ignored when the log contains
         real *Account Balance* rows, since those already carry the true
         balance.
+    risk_capital:
+        Optional. Amount of capital actually at risk, when it differs from
+        *starting_balance*/the account's displayed balance — e.g. a
+        prop-firm evaluation/funded account where the shown balance (say
+        $50,000) is mostly a trailing-drawdown buffer, and the amount you
+        can actually lose before failing is much smaller (say $2,000). When
+        set, Monte Carlo's drawdown-percentage and ruin-probability figures
+        are computed against this amount instead of the (possibly inflated)
+        account balance, while the dollar-denominated equity curve and
+        balance figures are left untouched. See
+        :func:`tearsheet.metrics.montecarlo.run_monte_carlo`.
 
     Returns a summary dict with ``trades``, ``metrics`` keys for testing.
     """
@@ -352,6 +364,7 @@ def run(
         monthly_summary=monthly_summary,
         sc_statistics=sc_statistics,
         mc_starting_balance=mc_starting_balance,
+        risk_capital=risk_capital,
     )
 
     print(f"[tearsheet] {len(enriched_trades)} trades processed → {output_path}")
