@@ -351,6 +351,65 @@
       <input class="sec-search-input" id="sec-search-input" type="search" placeholder="Jump to section…" autocomplete="off" spellcheck="false" />
       <div class="sec-search-dropdown" id="sec-search-dropdown"></div>
     </div>
+    {% if live_upload %}
+    <button type="button" id="upload-btn" onclick="document.getElementById('upload-modal').style.display='flex'"
+            style="background:var(--panel-bg,#161b22);color:inherit;border:1px solid var(--border,#30363d);border-radius:6px;padding:8px 14px;cursor:pointer;font-size:0.85rem;white-space:nowrap;">
+      &#8593; Upload New Log
+    </button>
+    <div id="upload-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+      <div style="background:var(--bg,#0d1117);border:1px solid var(--border,#30363d);border-radius:8px;padding:24px;width:360px;max-width:90vw;">
+        <h3 style="margin:0 0 14px;font-size:1rem;">Generate report from a new log</h3>
+        <form id="upload-form">
+          <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:0.8rem;margin-bottom:4px;">Trade Activity Log file</label>
+            <input type="file" name="file" required style="width:100%;font-size:0.8rem;">
+          </div>
+          <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:0.8rem;margin-bottom:4px;">Starting balance (optional)</label>
+            <input type="number" step="any" name="starting_balance" style="width:100%;padding:6px;font-size:0.8rem;background:var(--panel-bg,#161b22);color:inherit;border:1px solid var(--border,#30363d);border-radius:4px;">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:0.8rem;margin-bottom:4px;">Risk capital (optional)</label>
+            <input type="number" step="any" name="risk_capital" style="width:100%;padding:6px;font-size:0.8rem;background:var(--panel-bg,#161b22);color:inherit;border:1px solid var(--border,#30363d);border-radius:4px;">
+          </div>
+          <div id="upload-status" style="font-size:0.8rem;margin-bottom:10px;min-height:1em;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" onclick="document.getElementById('upload-modal').style.display='none'"
+                    style="background:transparent;color:inherit;border:1px solid var(--border,#30363d);border-radius:6px;padding:6px 14px;cursor:pointer;">Cancel</button>
+            <button type="submit" style="background:var(--blue,#58a6ff);color:#0d1117;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Generate</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script>
+      (function() {
+        var form = document.getElementById('upload-form');
+        if (!form) return;
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          var status = document.getElementById('upload-status');
+          var submitBtn = form.querySelector('button[type="submit"]');
+          status.textContent = 'Processing…';
+          submitBtn.disabled = true;
+          fetch('/upload', { method: 'POST', body: new FormData(form) })
+            .then(function(resp) {
+              if (!resp.ok) { return resp.text().then(function(t) { throw new Error(t || resp.statusText); }); }
+              return resp.text();
+            })
+            .then(function() {
+              status.style.color = '#3fb950';
+              status.textContent = 'Report updated — reloading…';
+              setTimeout(function() { window.location.reload(); }, 600);
+            })
+            .catch(function(err) {
+              status.style.color = '#f85149';
+              status.textContent = 'Error: ' + err.message;
+              submitBtn.disabled = false;
+            });
+        });
+      })();
+    </script>
+    {% endif %}
     <div class="theme-selector">
       <label for="theme-select">Theme:</label>
       <select class="theme-select" id="theme-select">
@@ -859,6 +918,40 @@
   <div class="chart-wrapper">{{ monte_carlo_chart | safe }}</div>
   {% else %}
   <p style="color:#8b949e;font-size:0.85rem;margin:0 0 10px">Monte Carlo simulation requires at least 5 trades.</p>
+  {% endif %}
+
+  {% if eod_simulation and eod_simulation.stats %}
+  <h2 id="sec-eod-simulation">Evaluation Pass/Fail Simulation (EOD Trailing Drawdown)</h2>
+  <p style="color:#8b949e;font-size:0.82rem;margin:0 0 10px">
+    Bootstrap resampling of {{ eod_simulation.stats.n_real_days }} trading days &times; {{ "{:,}".format(eod_simulation.stats.n_sims) }} simulations,
+    up to {{ eod_simulation.stats.max_days_simulated }} simulated days per path.
+    Models an EOD trailing drawdown of ${{ "{:,.0f}".format(eod_simulation.stats.drawdown_limit) }}
+    {%- if eod_simulation.stats.daily_loss_limit %}, a daily loss limit of ${{ "{:,.0f}".format(eod_simulation.stats.daily_loss_limit) }}{% endif -%}
+    {%- if eod_simulation.stats.profit_target %}, and a profit target of ${{ "{:,.0f}".format(eod_simulation.stats.profit_target) }}{% endif -%}.
+    Does not model minimum-trading-days or single-day-profit-consistency rules some firms also enforce.
+  </p>
+  <div class="kpi-grid" style="margin-bottom:12px">
+    <div class="kpi">
+      <div class="label kpi-label-row">Actual Historical Outcome<span class="kpi-help"><span class="kpi-help-link">?</span><span class="kpi-help-popup">What actually happened when your real day-by-day P&amp;L sequence is replayed through the evaluation rules (not a simulation — your literal trading history).</span></span></div>
+      <div class="value {{ 'pos' if eod_simulation.stats.actual_outcome == 'pass' else ('neg' if 'fail' in eod_simulation.stats.actual_outcome else 'neutral') }}">{{ eod_simulation.stats.actual_outcome | replace('_', ' ') | title }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label kpi-label-row">Probability of Passing<span class="kpi-help"><span class="kpi-help-link">?</span><span class="kpi-help-popup">Percentage of simulated day-sequences that reach the profit target before breaching the trailing drawdown or daily loss limit.</span></span></div>
+      <div class="value {{ 'pos' if eod_simulation.stats.prob_pass >= 50 else 'neutral' }}">{{ "{:.1f}%".format(eod_simulation.stats.prob_pass) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label kpi-label-row">Probability of Failing (Trailing DD)<span class="kpi-help"><span class="kpi-help-link">?</span><span class="kpi-help-popup">Percentage of simulated paths that breach the EOD trailing drawdown floor before passing or hitting the daily loss limit.</span></span></div>
+      <div class="value {{ 'neg' if eod_simulation.stats.prob_fail_drawdown > 20 else 'neutral' }}">{{ "{:.1f}%".format(eod_simulation.stats.prob_fail_drawdown) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label kpi-label-row">Probability of Failing (Daily Loss)<span class="kpi-help"><span class="kpi-help-link">?</span><span class="kpi-help-popup">Percentage of simulated paths where a single day's loss exceeds the daily loss limit, independent of trailing drawdown status.</span></span></div>
+      <div class="value {{ 'neg' if eod_simulation.stats.prob_fail_daily_loss > 20 else 'neutral' }}">{{ "{:.1f}%".format(eod_simulation.stats.prob_fail_daily_loss) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label kpi-label-row">Undetermined<span class="kpi-help"><span class="kpi-help-link">?</span><span class="kpi-help-popup">Percentage of simulated paths that neither passed nor failed within the simulated day cap — increase max_days_multiplier for a more conclusive read on a strategy with a small edge.</span></span></div>
+      <div class="value neutral">{{ "{:.1f}%".format(eod_simulation.stats.prob_undetermined) }}</div>
+    </div>
+  </div>
   {% endif %}
 
     {% if benchmark_metrics %}

@@ -1,0 +1,12 @@
+services:
+  tearsheet-web:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./input:/input
+      - ./output:/output
+    environment:
+      - TEARSHEET_INPUT_DIR=/input
+      - TEARSHEET_OUTPUT_DIR=/output
+    restart: unless-stopped

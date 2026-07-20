@@ -26,6 +26,7 @@ from tearsheet.metrics.segmentation import (
     pct_profitable_periods,
 )
 from tearsheet.metrics.rolling import compute_rolling_metrics
+from tearsheet.metrics.eod_simulator import simulate_evaluation
 from tearsheet.dataio.benchmark import fetch_benchmark, compute_benchmark_metrics
 from tearsheet.report.render import render_report
 
@@ -236,6 +237,10 @@ def run(
     output_path: str | Path,
     starting_balance: float | None = None,
     risk_capital: float | None = None,
+    drawdown_limit: float | None = None,
+    daily_loss_limit: float | None = None,
+    profit_target: float | None = None,
+    live_upload: bool = False,
 ) -> dict[str, Any]:
     """Execute the full pipeline and write *output_path*.
 
@@ -256,6 +261,11 @@ def run(
         account balance, while the dollar-denominated equity curve and
         balance figures are left untouched. See
         :func:`tearsheet.metrics.montecarlo.run_monte_carlo`.
+    drawdown_limit, daily_loss_limit, profit_target:
+        Optional. When *drawdown_limit* is set (together with
+        *starting_balance*), runs a bootstrap pass/fail simulation of a
+        prop-firm-style EOD trailing-drawdown evaluation. See
+        :func:`tearsheet.metrics.eod_simulator.simulate_evaluation`.
 
     Returns a summary dict with ``trades``, ``metrics`` keys for testing.
     """
@@ -308,6 +318,16 @@ def run(
     exec_metrics = compute_execution_metrics(enriched_trades, orders)
 
     rolling_metrics = compute_rolling_metrics(enriched_trades, window=20)
+
+    eod_simulation = None
+    if drawdown_limit is not None and starting_balance is not None:
+        eod_simulation = simulate_evaluation(
+            enriched_trades,
+            starting_balance=starting_balance,
+            drawdown_limit=drawdown_limit,
+            daily_loss_limit=daily_loss_limit,
+            profit_target=profit_target,
+        )
 
     # Segmentation
     by_date = segment_by_date(enriched_trades)
@@ -365,6 +385,8 @@ def run(
         sc_statistics=sc_statistics,
         mc_starting_balance=mc_starting_balance,
         risk_capital=risk_capital,
+        eod_simulation=eod_simulation,
+        live_upload=live_upload,
     )
 
     print(f"[tearsheet] {len(enriched_trades)} trades processed → {output_path}")
@@ -380,4 +402,5 @@ def run(
         "calendar_data": calendar_data,
         "monthly_summary": monthly_summary,
         "sc_statistics": sc_statistics,
+        "eod_simulation": eod_simulation,
     }
