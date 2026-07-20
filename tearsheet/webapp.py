@@ -103,17 +103,31 @@ def _optional_float(value: str | None) -> float | None:
         return None
 
 
+def _param(form_value: str | None, env_var: str) -> float | None:
+    """Form value wins when given; otherwise fall back to an env-var default.
+
+    Lets a deployment bake in fixed account parameters (e.g. a specific
+    prop-firm account's starting balance/risk capital/drawdown rules) via
+    environment variables, while still allowing a per-upload override
+    through the form when needed.
+    """
+    explicit = _optional_float(form_value)
+    if explicit is not None:
+        return explicit
+    return _optional_float(os.environ.get(env_var))
+
+
 @app.route("/upload", methods=["POST"])
 def upload() -> Response:
     f = request.files.get("file")
     if f is None or f.filename == "":
         return Response("No file uploaded.", status=400)
 
-    starting_balance = _optional_float(request.form.get("starting_balance"))
-    risk_capital = _optional_float(request.form.get("risk_capital"))
-    drawdown_limit = _optional_float(request.form.get("drawdown_limit"))
-    daily_loss_limit = _optional_float(request.form.get("daily_loss_limit"))
-    profit_target = _optional_float(request.form.get("profit_target"))
+    starting_balance = _param(request.form.get("starting_balance"), "TEARSHEET_STARTING_BALANCE")
+    risk_capital = _param(request.form.get("risk_capital"), "TEARSHEET_RISK_CAPITAL")
+    drawdown_limit = _param(request.form.get("drawdown_limit"), "TEARSHEET_DRAWDOWN_LIMIT")
+    daily_loss_limit = _param(request.form.get("daily_loss_limit"), "TEARSHEET_DAILY_LOSS_LIMIT")
+    profit_target = _param(request.form.get("profit_target"), "TEARSHEET_PROFIT_TARGET")
 
     # Sanitize the filename ourselves rather than trusting the client;
     # werkzeug's secure_filename isn't imported to keep this dependency-light,
