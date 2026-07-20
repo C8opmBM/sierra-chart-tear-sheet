@@ -35,6 +35,22 @@ def build_parser() -> argparse.ArgumentParser:
                         "dollar-denominated equity curve is left untouched. Example: a "
                         "$50,000 Lucid account with a $2,000 trailing max drawdown -> "
                         "--starting-balance 50000 --risk-capital 2000.")
+    p.add_argument("--drawdown-limit", type=float, default=None, metavar="AMOUNT",
+                   help="Max EOD trailing drawdown in dollars for a prop-firm-style "
+                        "evaluation/funded account pass/fail simulation (e.g. 2000 for "
+                        "Lucid's $2,000 trailing max loss). Requires --starting-balance. "
+                        "The floor trails your highest end-of-day balance and locks at "
+                        "--starting-balance once balance clears "
+                        "starting_balance + drawdown_limit.")
+    p.add_argument("--daily-loss-limit", type=float, default=None, metavar="AMOUNT",
+                   help="Max single-day loss in dollars before automatic evaluation "
+                        "failure, independent of trailing drawdown (e.g. 1200). Only "
+                        "used together with --drawdown-limit.")
+    p.add_argument("--profit-target", type=float, default=None, metavar="AMOUNT",
+                   help="Dollar profit above --starting-balance needed to pass the "
+                        "evaluation (e.g. 3000). Only used together with "
+                        "--drawdown-limit; without a profit target the simulation can "
+                        "only report fail/undetermined, never pass.")
     return p
 
 
@@ -48,7 +64,14 @@ def main(argv=None) -> None:
         sys.exit(1)
 
     from tearsheet.app.main import run
-    run(input_path, args.output, starting_balance=args.starting_balance, risk_capital=args.risk_capital)
+    run(
+        input_path, args.output,
+        starting_balance=args.starting_balance,
+        risk_capital=args.risk_capital,
+        drawdown_limit=args.drawdown_limit,
+        daily_loss_limit=args.daily_loss_limit,
+        profit_target=args.profit_target,
+    )
 
 
 if __name__ == "__main__":

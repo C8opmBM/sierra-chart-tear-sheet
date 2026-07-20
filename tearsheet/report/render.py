@@ -2254,6 +2254,8 @@ def render_report(
     sc_statistics: dict[str, Any] | None = None,
     mc_starting_balance: float | None = None,
     risk_capital: float | None = None,
+    eod_simulation: dict[str, Any] | None = None,
+    live_upload: bool = False,
 ) -> None:
     """Render the tear sheet HTML to *output_path*."""
     env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=False)
@@ -2295,6 +2297,8 @@ def render_report(
         metrics=metrics,
         exec_metrics=exec_metrics or {},
         segmentation=segmentation_data,
+        eod_simulation=eod_simulation or {},
+        live_upload=live_upload,
         equity_chart=_equity_chart(equity_curve, cash_flows),
         drawdown_chart=_drawdown_chart(equity_curve),
         daily_pnl_chart=_daily_pnl_chart(trades),
