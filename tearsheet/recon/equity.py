@@ -123,6 +123,59 @@ def build_equity_curve(df: pd.DataFrame) -> list[dict[str, Any]]:
     return curve
 
 
+def build_equity_curve_from_trades(
+    trades: list[dict[str, Any]],
+    starting_balance: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Reconstruct an equity curve from realized trade P&L.
+
+    Fallback for logs that contain no *Account Balance* rows at all — this
+    happens on some prop-firm evaluation/funded accounts (e.g. routed through
+    "Rithmic Direct - DTC") where Sierra Chart never posts balance activity,
+    even though Orders/Fills/Positions are recorded normally.
+
+    One point is emitted per closed (flat-to-flat) trade, keyed on
+    ``exit_time``, accumulating each trade's ``net_pnl`` (gross P&L minus
+    fees, from :func:`tearsheet.recon.trades.reconstruct_trades`) on top of
+    *starting_balance*.
+
+    This is necessarily an approximation relative to a true Account Balance
+    curve:
+
+    * It has no visibility into deposits/withdrawals — callers should treat
+      the result as having zero cash flows (do not run
+      :func:`detect_cash_flows` against it).
+    * It only reflects realized P&L at trade close, not intraperiod
+      open-position swings.
+    * When *starting_balance* is unknown, pass ``0.0`` and treat the curve as
+      relative cumulative P&L rather than an absolute account balance.
+
+    Parameters
+    ----------
+    trades:
+        List of trade dicts (must have ``exit_time`` and ``net_pnl``), as
+        returned by :func:`tearsheet.recon.trades.reconstruct_trades` /
+        :func:`tearsheet.recon.trades.enrich_trades`.
+    starting_balance:
+        Account balance immediately before the first trade in *trades*.
+
+    Returns
+    -------
+    list[dict]
+        Chronological ``{DateTime, balance}`` dicts, matching the shape
+        produced by :func:`build_equity_curve`.
+    """
+    closed = [t for t in trades if t.get("exit_time") is not None]
+    closed = sorted(closed, key=lambda t: t["exit_time"])
+
+    curve: list[dict[str, Any]] = []
+    running = float(starting_balance)
+    for t in closed:
+        running += float(t.get("net_pnl", 0.0))
+        curve.append({"DateTime": t["exit_time"], "balance": round(running, 2)})
+    return curve
+
+
 def daily_returns(equity_curve: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return per-day P&L list ``{date, pnl}`` from the equity curve.
 

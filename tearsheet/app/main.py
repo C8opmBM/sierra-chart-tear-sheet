@@ -9,7 +9,12 @@ from tearsheet.dataio.loader import load_file
 from tearsheet.normalize.events import split_events
 from tearsheet.normalize.orders import normalize_orders
 from tearsheet.recon.trades import reconstruct_trades, enrich_trades
-from tearsheet.recon.equity import build_equity_curve, detect_cash_flows, adjust_equity_curve
+from tearsheet.recon.equity import (
+    build_equity_curve,
+    build_equity_curve_from_trades,
+    detect_cash_flows,
+    adjust_equity_curve,
+)
 from tearsheet.metrics.performance import compute_metrics
 from tearsheet.metrics.monthly_summary import compute_monthly_summary
 from tearsheet.metrics.sc_statistics import compute_sc_statistics
@@ -226,11 +231,23 @@ def _build_calendar_data(trades: list[dict]) -> dict:
     return {"years": str_years, "days": days}
 
 
-def run(input_path: str | Path, output_path: str | Path) -> dict[str, Any]:
+def run(
+    input_path: str | Path,
+    output_path: str | Path,
+    starting_balance: float | None = None,
+) -> dict[str, Any]:
     """Execute the full pipeline and write *output_path*.
+
+    Parameters
+    ----------
+    starting_balance:
+        Only used as a fallback (see below). Ignored when the log contains
+        real *Account Balance* rows, since those already carry the true
+        balance.
 
     Returns a summary dict with ``trades``, ``metrics`` keys for testing.
     """
+    import sys
     import pandas as pd
 
     input_path = Path(input_path)
@@ -245,7 +262,24 @@ def run(input_path: str | Path, output_path: str | Path) -> dict[str, Any]:
     enriched_trades = enrich_trades(trades, orders)
 
     equity_curve = build_equity_curve(df)
-    cash_flows = detect_cash_flows(df)
+    if equity_curve:
+        cash_flows = detect_cash_flows(df)
+    else:
+        # Some broker routings (e.g. Rithmic Direct - DTC on certain
+        # prop-firm evaluation/funded accounts) never emit Account Balance
+        # activity, even though Orders/Fills/Positions are all present.
+        # Fall back to reconstructing equity from realized trade P&L.
+        sb = starting_balance if starting_balance is not None else 0.0
+        equity_curve = build_equity_curve_from_trades(enriched_trades, sb)
+        # No Account Balance rows means no way to detect deposits/withdrawals.
+        cash_flows = []
+        note = (
+            "no equity data found; reconstructing equity curve from realized "
+            "trade P&L"
+        )
+        if starting_balance is None:
+            note += " starting at 0.0 (pass --starting-balance for an absolute balance axis)"
+        print(f"[tearsheet] WARNING: {note}", file=sys.stderr)
     adjust_equity_curve(equity_curve, cash_flows)
     metrics = compute_metrics(enriched_trades, equity_curve)
 
