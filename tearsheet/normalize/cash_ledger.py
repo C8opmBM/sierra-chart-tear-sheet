@@ -15,9 +15,11 @@ _PNL_RE = re.compile(r"Closed Trade Profit/Loss:\s*(-?[\d]+(?:\.\d+)?)", re.IGNO
 # Each fill (entry or exit) is charged this amount per lot.
 COMMISSION_PER_SIDE: dict[str, float] = {
     "MES": 0.50,
-    "ES":  1.90,
-    "1OZ": 0.42,
-    "1oz": 0.42,
+    "MNQ": 0.50,
+    "ES":  1.75,
+    "NQ":  1.75,
+    "MCL": 0.50,
+    "MGC": 0.80,
 }
 
 
