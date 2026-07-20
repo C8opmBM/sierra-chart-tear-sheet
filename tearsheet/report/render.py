@@ -2207,6 +2207,33 @@ def _monte_carlo_chart(mc_results: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Monte Carlo starting-balance helper
+# ---------------------------------------------------------------------------
+
+def _monte_carlo_starting_balance(
+    equity_curve: list[dict[str, Any]],
+    mc_starting_balance: float | None,
+) -> float:
+    """Return the correct pre-trade starting balance for Monte Carlo.
+
+    When the equity curve was reconstructed from trade P&L (no Account
+    Balance rows in the log — see
+    :func:`tearsheet.recon.equity.build_equity_curve_from_trades`),
+    ``equity_curve[0]["balance"]`` already has trade 1's P&L baked in.
+    Monte Carlo's own P&L list also includes trade 1, so reusing that first
+    point here would double-count trade 1. ``mc_starting_balance`` carries
+    the true pre-trade balance for that case.
+
+    For logs with real Account Balance data, ``mc_starting_balance`` is
+    ``None`` and the historical behavior (``equity_curve[0]["balance"]``)
+    applies unchanged.
+    """
+    if mc_starting_balance is not None:
+        return mc_starting_balance
+    return equity_curve[0]["balance"] if equity_curve else 0.0
+
+
+# ---------------------------------------------------------------------------
 # Main render function
 # ---------------------------------------------------------------------------
 
@@ -2225,6 +2252,8 @@ def render_report(
     cash_flows: list[dict[str, Any]] | None = None,
     monthly_summary: dict[str, Any] | None = None,
     sc_statistics: dict[str, Any] | None = None,
+    mc_starting_balance: float | None = None,
+    risk_capital: float | None = None,
 ) -> None:
     """Render the tear sheet HTML to *output_path*."""
     env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=False)
@@ -2238,8 +2267,8 @@ def render_report(
     # projected balance distribution reflect real trading costs, not just
     # gross execution P&L.
     pnls = [t.get("net_pnl", 0.0) for t in trades]
-    starting_bal = equity_curve[0]["balance"] if equity_curve else 0.0
-    monte_carlo = run_monte_carlo(pnls, starting_bal) if len(pnls) >= 5 else {}
+    starting_bal = _monte_carlo_starting_balance(equity_curve, mc_starting_balance)
+    monte_carlo = run_monte_carlo(pnls, starting_bal, risk_capital=risk_capital) if len(pnls) >= 5 else {}
     mc_chart = _monte_carlo_chart(monte_carlo)
 
     has_r_multiples = any(t.get("r_multiple") is not None for t in trades)
