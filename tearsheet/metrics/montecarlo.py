@@ -17,7 +17,11 @@ def run_monte_carlo(
     Parameters
     ----------
     pnls:
-        Gross P&L per trade, in chronological order.
+        Net P&L per trade (gross P&L minus commissions/fees), in
+        chronological order. Using gross P&L here would understate ruin risk
+        and overstate the projected balance distribution, since real equity
+        pays commissions on every fill regardless of which historical trades
+        get resampled.
     starting_balance:
         Equity at the start of the period.
     n_sims:

@@ -2234,7 +2234,10 @@ def render_report(
 
     plotly_js = '<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>'
 
-    pnls = [t.get("gross_pnl", 0.0) for t in trades]
+    # Use net P&L (after commissions/fees) so ruin probability and the
+    # projected balance distribution reflect real trading costs, not just
+    # gross execution P&L.
+    pnls = [t.get("net_pnl", 0.0) for t in trades]
     starting_bal = equity_curve[0]["balance"] if equity_curve else 0.0
     monte_carlo = run_monte_carlo(pnls, starting_bal) if len(pnls) >= 5 else {}
     mc_chart = _monte_carlo_chart(monte_carlo)
