@@ -262,6 +262,11 @@ def run(
     enriched_trades = enrich_trades(trades, orders)
 
     equity_curve = build_equity_curve(df)
+    # True pre-trade balance, only known/needed when we fall back to
+    # reconstructing equity from trade P&L (see below). None means "use
+    # equity_curve[0]['balance']" — the historical behavior for logs with
+    # real Account Balance rows, left untouched here.
+    mc_starting_balance: float | None = None
     if equity_curve:
         cash_flows = detect_cash_flows(df)
     else:
@@ -270,6 +275,7 @@ def run(
         # activity, even though Orders/Fills/Positions are all present.
         # Fall back to reconstructing equity from realized trade P&L.
         sb = starting_balance if starting_balance is not None else 0.0
+        mc_starting_balance = sb
         equity_curve = build_equity_curve_from_trades(enriched_trades, sb)
         # No Account Balance rows means no way to detect deposits/withdrawals.
         cash_flows = []
@@ -345,6 +351,7 @@ def run(
         cash_flows=cash_flows,
         monthly_summary=monthly_summary,
         sc_statistics=sc_statistics,
+        mc_starting_balance=mc_starting_balance,
     )
 
     print(f"[tearsheet] {len(enriched_trades)} trades processed → {output_path}")
