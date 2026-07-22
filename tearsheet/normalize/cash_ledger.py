@@ -58,7 +58,7 @@ def compute_fee_events_from_fills(fills_df: pd.DataFrame) -> list[dict[str, Any]
             continue
         qty = int(row["Quantity"])
         dt = row["DateTime"]
-        events.append({"DateTime": dt, "kind": "fee", "amount": round(qty * rate, 4)})
+        events.append({"DateTime": dt, "kind": "fee", "amount": round(qty * rate, 4), "symbol": symbol})
 
     if unknown:
         warnings.warn(
@@ -83,14 +83,15 @@ def extract_cash_events(df: pd.DataFrame) -> list[dict[str, Any]]:
         # Fee/P&L data lives in OrderActionSource, not Note
         note = str(row.get("OrderActionSource", ""))
         dt = row["DateTime"]
+        symbol = str(row.get("Symbol", "")).strip()
 
         m_fee = _FEE_RE.search(note)
         if m_fee:
-            events.append({"DateTime": dt, "kind": "fee", "amount": float(m_fee.group(1))})
+            events.append({"DateTime": dt, "kind": "fee", "amount": float(m_fee.group(1)), "symbol": symbol})
             continue
 
         m_pnl = _PNL_RE.search(note)
         if m_pnl:
-            events.append({"DateTime": dt, "kind": "pnl", "amount": float(m_pnl.group(1))})
+            events.append({"DateTime": dt, "kind": "pnl", "amount": float(m_pnl.group(1)), "symbol": symbol})
 
     return events

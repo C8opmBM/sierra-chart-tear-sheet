@@ -241,6 +241,7 @@ def run(
     daily_loss_limit: float | None = None,
     profit_target: float | None = None,
     live_upload: bool = False,
+    export_trades_csv: str | Path | None = None,
 ) -> dict[str, Any]:
     """Execute the full pipeline and write *output_path*.
 
@@ -261,6 +262,11 @@ def run(
         account balance, while the dollar-denominated equity curve and
         balance figures are left untouched. See
         :func:`tearsheet.metrics.montecarlo.run_monte_carlo`.
+    export_trades_csv:
+        Optional path. When set, writes one row per closed trade (symbol,
+        direction, entry/exit time, avg entry/exit price, qty, gross_pnl,
+        fees, net_pnl) — useful for diffing against an independently-kept
+        trading journal to find exactly which trade(s) disagree.
     drawdown_limit, daily_loss_limit, profit_target:
         Optional. When *drawdown_limit* is set (together with
         *starting_balance*), runs a bootstrap pass/fail simulation of a
@@ -388,6 +394,16 @@ def run(
         eod_simulation=eod_simulation,
         live_upload=live_upload,
     )
+
+    if export_trades_csv is not None:
+        pd.DataFrame(enriched_trades)[
+            [c for c in (
+                "trade_id", "symbol", "direction", "entry_time", "exit_time",
+                "total_qty", "avg_entry", "avg_exit", "gross_pnl", "fees", "net_pnl",
+                "exit_type",
+            ) if enriched_trades and c in enriched_trades[0]]
+        ].to_csv(export_trades_csv, index=False)
+        print(f"[tearsheet] trade-level CSV written → {export_trades_csv}", file=sys.stderr)
 
     print(f"[tearsheet] {len(enriched_trades)} trades processed → {output_path}")
     return {
