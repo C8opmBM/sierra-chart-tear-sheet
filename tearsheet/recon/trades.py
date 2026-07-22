@@ -327,11 +327,18 @@ class FlatToFlatReconstructor:
 
     # ------------------------------------------------------------------
     def assign_fees(self, cash_events: list[dict]) -> None:
-        """Assign fee events to trades by timestamp overlap.
+        """Assign fee events to trades by symbol + timestamp overlap.
 
         A small epsilon (500 ms) is added to the exit_time upper bound to
         capture AccountBalance rows that are stamped a few microseconds after
         the closing fill.
+
+        Matching requires the SAME symbol, not just an overlapping time
+        window: two trades in different symbols (e.g. MES and MNQ) can be
+        open concurrently, and matching by timestamp alone would risk
+        attributing one symbol's fee to the other's trade. Events without a
+        ``symbol`` key (e.g. from an older caller) fall back to
+        timestamp-only matching for backward compatibility.
         """
         import pandas as pd
         _eps = pd.Timedelta(milliseconds=500)
@@ -340,7 +347,10 @@ class FlatToFlatReconstructor:
                 continue
             fee_time = ev["DateTime"]
             fee_amt = ev["amount"]
+            fee_symbol = ev.get("symbol")
             for t in self._trades:
+                if fee_symbol is not None and t.symbol != fee_symbol:
+                    continue
                 if t.entry_time <= fee_time <= t.exit_time + _eps:
                     t.fees += fee_amt
                     break
