@@ -28,6 +28,7 @@ from tearsheet.app.main import run
 UPLOAD_DIR = Path(os.environ.get("TEARSHEET_INPUT_DIR", "/input"))
 OUTPUT_DIR = Path(os.environ.get("TEARSHEET_OUTPUT_DIR", "/output"))
 REPORT_PATH = OUTPUT_DIR / "report.html"
+TRADES_CSV_PATH = OUTPUT_DIR / "trades.csv"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -146,6 +147,10 @@ def upload() -> Response:
             daily_loss_limit=daily_loss_limit,
             profit_target=profit_target,
             live_upload=True,
+            # Always emit a per-trade CSV next to the report — cheap, and
+            # gives you a ready-made file to diff against an independently
+            # kept trading journal without needing any CLI overrides.
+            export_trades_csv=TRADES_CSV_PATH,
         )
     except Exception as exc:  # noqa: BLE001 - surface the real error to the uploader
         return Response(f"Failed to generate report: {exc}", status=500)
