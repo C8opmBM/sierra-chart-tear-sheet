@@ -51,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "evaluation (e.g. 3000). Only used together with "
                         "--drawdown-limit; without a profit target the simulation can "
                         "only report fail/undetermined, never pass.")
+    p.add_argument("--export-trades-csv", default=None, metavar="FILE",
+                   help="Also write one row per closed trade (symbol, direction, "
+                        "entry/exit time, avg entry/exit price, qty, gross_pnl, fees, "
+                        "net_pnl) to this CSV path. Useful for diffing against an "
+                        "independently-kept trading journal to pinpoint exactly which "
+                        "trade(s) disagree, rather than only comparing aggregate totals.")
     return p
 
 
@@ -71,6 +77,7 @@ def main(argv=None) -> None:
         drawdown_limit=args.drawdown_limit,
         daily_loss_limit=args.daily_loss_limit,
         profit_target=args.profit_target,
+        export_trades_csv=args.export_trades_csv,
     )
 
 
